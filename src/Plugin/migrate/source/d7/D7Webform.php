@@ -12,6 +12,7 @@ use Drupal\field\Entity\FieldConfig;
 use Drupal\field\Entity\FieldStorageConfig;
 use Drupal\webform\Entity\Webform;
 use Drupal\node\Entity\Node;
+use Symfony\Component\Yaml\Yaml;
 
 /**
  * Drupal 7 webform source from database.
@@ -177,6 +178,7 @@ class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackA
    * Build form elements from webform component table
    */
   private function buildFormElements($nid) {
+    // TODO : Use yaml_emit http://php.net/manual/en/function.yaml-emit.php
     $output = '';
 
     $query = $this->select('webform_component', 'wc');
@@ -230,8 +232,13 @@ class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackA
           if (empty($child)) {
             break;
           }
-          $element = $elements[$child];
+          $element = &$elements[$child];
           $element['depth'] = $depth;
+          // we might get element with same form_key
+          // d8 doesn't like that so rename it
+          if($depth > 0){
+            $element['form_key'] = $element['form_key'] . '_' . $element['pid'];
+          }
           unset($element['pid']);
           $elements_tree[] = $element;
           if (!empty($children[$element['cid']])) {
@@ -336,8 +343,13 @@ class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackA
           if (!empty($extra['aslist'])) {
             $select_type = 'select';
           }
-          elseif (!empty($extra['multiple'])) {
+          elseif (!empty($extra['multiple']) && count($extra['items']) > 1) {
             $select_type = 'checkboxes';
+          }
+          elseif (!empty($extra['multiple']) && count($extra['items']) == 1) {
+            $select_type = 'checkbox';
+            list($key, $desc) = explode('|', $extra['items']);
+            $markup .= "$indent  '#description': \"" . $this->cleanString($desc) . "\"\n";
           }
           else {
             $select_type = 'radios';
@@ -467,16 +479,136 @@ class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackA
       if (!empty($element['required'])) {
         $markup .= "$indent  '#required': true\n";
       }
+      
+      // build contionals
+      if($states = $this->buildConditionals($element, $elements)){
+        foreach($states as $key => $values){
+          $markup .= "$indent  '#states':\n";
+          $markup .= "$indent    $key:\n";
+          foreach($values as $value){
+            $markup .= "$indent      " . Yaml::dump($value, 2, 10 + $indent);
+          }
+        }
+      }
 
       $output .= $markup;
     }
-
+    
     if ($multiPage) {
       // Replace the final page title.
       $output = str_replace('{' . $current_page . '_title}', $current_page_title, $output);
     }
-
     return array('elements' => $output, 'xref' => $xref);
+  }
+  
+  /**
+   * Build conditionals and translate them to states api in D8.
+   */
+  private function buildConditionals($element, $elements){
+    $nid = $element['nid'];
+    $cid = $element['cid'];
+    $extra = unserialize($element['extra']);
+    // checkboxes : ':input[name="add_more_locations_24[yes]"]':
+    $query = $this->select('webform_conditional', 'wc');
+    $query->innerJoin('webform_conditional_actions', 'wca', 'wca.nid=wc.nid AND wca.rgid=wc.rgid');
+    $query->innerJoin('webform_conditional_rules', 'wcr', 'wcr.nid=wca.nid AND wcr.rgid=wca.rgid');
+    $query->fields('wc', array(
+      'nid',
+      'rgid',
+      'andor',
+      'weight',
+    ))
+    ->fields('wca', array(
+      'aid',
+      'target_type',
+      'target',
+      'invert',
+      'action',
+      'argument'
+    ))
+    ->fields('wcr', array(
+      'rid',
+      'source_type',
+      'source',
+      'operator',
+      'value'
+    ));
+    $conditions = $query->condition('wc.nid', $nid)->condition('wca.target', $cid)->execute();
+    $states = [];
+    if(!empty($conditions)){
+      foreach($conditions as $condition){
+        // element states
+        switch($condition['action']){
+          case 'show':
+          $element_state = $condition['invert'] ? 'invisible' : 'visible';
+          break;
+          case 'require':
+          $element_state = $condition['invert'] ? 'optional' : 'required';
+          break;
+          case 'set':
+          // Nothing found in D8 :(
+          break;
+        }
+        // condition states
+        $operator_value = $condition['value'];
+        $depedent = $elements[$condition['source']];
+        $depedent_extra = unserialize($depedent['extra']);
+        switch($condition['operator']){
+          case 'equal':
+          $element_condition = ['value' => $operator_value];
+          if ($depedent['type'] == 'select' && !$depedent_extra['aslist']) {
+            $element_condition = ['checked' => TRUE];
+          }
+          break;
+          case 'not_equal':
+          // There is no handler for this in D8 so we do the reverse
+          $element_state = $condition['invert'] ? 'visible' : 'invisible';
+          $element_condition = ['value' => $operator_value];
+          // specially handle the checkboxes, radios
+          if ($depedent['type'] == 'select' && !$depedent_extra['aslist']) {
+            $element_condition = ['checked' => TRUE];
+          }
+          break;
+          case 'less_than':
+          case 'less_than_equal':
+          case 'greater_than':
+          case 'greater_than_equal':
+          // Nothing in D8 to handle these
+          break;
+          case 'empty':
+          if($operator_value == 'checked'){
+            $element_condition = ['unchecked' => TRUE];
+          }
+          else {
+            $element_condition = ['empty' => TRUE];
+          }
+          break;
+          case 'not_empty':
+          if($operator_value == 'checked'){
+            $element_condition = ['checked' => TRUE];
+          }
+          else {
+            $element_condition = ['filled' => FALSE];
+          }
+          break;
+        }
+        
+        if (!$depedent_extra['aslist'] && $depedent_extra['multiple'] && count($depedent_extra['items']) > 1) {
+          $depedent['form_key'] = $depedent['form_key'] . "[$operator_value]";
+        }
+        elseif (!$depedent_extra['aslist'] && !$depedent_extra['multiple']) {
+          $depedent['form_key'] = $depedent['form_key'] . "[$operator_value]";
+        }
+        $states[$element_state][] = [':input[name="' . $depedent['form_key'] . '"]' => $element_condition];
+      }
+      if(empty($states)){
+        return FALSE;
+      }
+      return $states;
+    }
+    else {
+      return FALSE;
+    }
   }
 
   /**
