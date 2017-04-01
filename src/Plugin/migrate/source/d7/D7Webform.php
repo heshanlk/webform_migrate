@@ -486,7 +486,10 @@ class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackA
           $markup .= "$indent  '#states':\n";
           $markup .= "$indent    $key:\n";
           foreach($values as $value){
-            $markup .= "$indent      " . Yaml::dump($value, 2, 10 + $indent);
+            foreach($value as $name => $item){
+              $markup .= "$indent      " . Yaml::dump($name, 2, 2) . ":\n";
+              $markup .= "$indent        " . Yaml::dump($item, 2, 2);
+            }
           }
         }
       }
