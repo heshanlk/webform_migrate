@@ -6,3 +6,4 @@ package: 'Migration'
 dependencies:
   - webform
   - webform_node
+  - migrate_drupal
