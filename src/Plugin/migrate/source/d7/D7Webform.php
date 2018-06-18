@@ -457,7 +457,7 @@ class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackA
 
       // Add common fields.
       if (!empty($element['value']) && (empty($valid_options) || in_array($element['value'], $valid_options))) {
-        $markup .= "$indent  '#default_value': " . $element['value'] . "\n";
+        $markup .= "$indent  '#default_value': \"" . $element['value'] . "\"\n";
       }
       if (!empty($extra['field_prefix'])) {
         $markup .= "$indent  '#field_prefix': " . $extra['field_prefix'] . "\n";
