@@ -343,7 +343,7 @@ class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackA
           if (!empty($extra['aslist'])) {
             $select_type = 'select';
           }
-          elseif (!empty($extra['multiple']) && count($extra['items']) > 1) {
+          elseif ($extra['multiple'] >= 1) {
             $select_type = 'checkboxes';
           }
           elseif (!empty($extra['multiple']) && count($extra['items']) == 1) {
