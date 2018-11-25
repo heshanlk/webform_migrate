@@ -9,11 +9,12 @@ use Drupal\migrate_drupal\Plugin\migrate\source\DrupalSqlBase;
  * Drupal 7 webform submission source from database.
  *
  * @MigrateSource(
- *   id = "d7_webform_submission"
+ *   id = "d7_webform_submission",
+ *   source_module = "webform"
  * )
  */
 class D7WebformSubmission extends DrupalSqlBase {
-  
+
   /**
    * {@inheritdoc}
    */
@@ -31,7 +32,7 @@ class D7WebformSubmission extends DrupalSqlBase {
 
     return $query;
   }
-  
+
     /**
    * {@inheritdoc}
    */
@@ -45,11 +46,11 @@ class D7WebformSubmission extends DrupalSqlBase {
       'is_draft' => $this->t('Whether this submission is draft'),
       'webform_id' => $this->t('Id to be used for Webform'),
       'webform_data' => $this->t('Webform submitted data'),
-      'webform_uri' => $this->t('Submission uri'),  
+      'webform_uri' => $this->t('Submission uri'),
     );
     return $fields;
   }
-  
+
   /**
    * {@inheritdoc}
    */
@@ -62,7 +63,7 @@ class D7WebformSubmission extends DrupalSqlBase {
     $row->setSourceProperty('webform_uri', '/form/webform-' . $nid);
     return parent::prepareRow($row);
   }
-  
+
   /**
    * {@inheritdoc}
    */
@@ -71,24 +72,24 @@ class D7WebformSubmission extends DrupalSqlBase {
     $ids['sid']['alias'] = 'wfs';
     return $ids;
   }
-  
+
   /**
    * Build submitted data from webform submitted data table
    */
   private function buildSubmittedData($sid) {
     $query = $this->select('webform_submitted_data', 'wfsd');
     $query->innerJoin('webform_component', 'wc', 'wc.nid=wfsd.nid AND wc.cid=wfsd.cid');
-    
+
     $query->fields('wfsd', array(
       'no',
-      'data',  
+      'data',
     ))
     ->fields('wc', array(
       'form_key',
       'extra',
     ));
     $wf_submissions = $query->condition('sid', $sid)->execute();
-    
+
     $submitted_data = array();
     foreach ($wf_submissions as $wf_submission) {
       $extra = unserialize($wf_submission['extra']);
@@ -102,5 +103,5 @@ class D7WebformSubmission extends DrupalSqlBase {
     }
     return $submitted_data;
   }
-  
+
 }

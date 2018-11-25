@@ -18,7 +18,8 @@ use Symfony\Component\Yaml\Yaml;
  * Drupal 7 webform source from database.
  *
  * @MigrateSource(
- *   id = "d7_webform"
+ *   id = "d7_webform",
+ *   source_module = "webform"
  * )
  */
 class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackAwareInterface {
@@ -255,7 +256,7 @@ class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackA
             break;
           }
         } while($child = next($children[$parent]));
-        
+
         if (!$has_children) {
           // We processed all components in this hierarchy-level
           reset($children[$parent]);
@@ -276,7 +277,7 @@ class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackA
       if($element['type'] == 'fieldset' && strpos($element['form_key'], 'fieldset') === FALSE){
         $element['form_key'] = 'fieldset_' . $element['form_key'];
       }
-      
+
       // If this is a multi-page form then indent all elements one level
       // to allow for page elements.
       if ($multiPage && $element['type'] != 'pagebreak') {
@@ -297,18 +298,15 @@ class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackA
           if (!empty($item)) {
             if (preg_match('/^<(.*)>$/', $item, $matches)) {
               // Handle option groups.
-              $options .= "$indent    '" . $matches[1] . "':\n";
+              $options .= sprintf('%s    "%s":%s', $indent, $matches[1], "\n");
               $ingroup = str_repeat(' ', 2);
             }
             else {
               $option = explode('|', $item);
               $valid_options[] = $option[0];
-              if (count($option) == 2) {
-                $options .= "$indent$ingroup    " . $option[0] . ": " . $option[1] . "\n";
-              }
-              else {
-                $options .= "$indent$ingroup    " . $option[0] . ": " . $option[0] . "\n";
-              }
+              $key = $option[0];
+              $value = count($option) == 2 ? $option[1] : $option[0];
+              $options .= sprintf('%s%s    "%s": "%s"%s', $indent, $ingroup, $key, $value, "\n");
             }
           }
         }
@@ -343,19 +341,23 @@ class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackA
           if (!empty($extra['aslist'])) {
             $select_type = 'select';
           }
-          elseif (!empty($extra['multiple']) && count($extra['items']) > 1) {
-            $select_type = 'checkboxes';
-          }
-          elseif (!empty($extra['multiple']) && count($extra['items']) == 1) {
-            $select_type = 'checkbox';
-            list($key, $desc) = explode('|', $extra['items']);
-            $markup .= "$indent  '#description': \"" . $this->cleanString($desc) . "\"\n";
+          elseif (!empty($extra['multiple'])) {
+            if ($extra['multiple'] == 1) {
+              $select_type = 'checkbox';
+              list(, $desc) = explode('|', $extra['items']);
+              $markup .= "$indent  '#description': \"" . $this->cleanString($desc) . "\"\n";
+            }
+            else {
+              $select_type = 'checkboxes';
+            }
           }
           else {
             $select_type = 'radios';
           }
           $markup .= "$indent  '#type': $select_type\n";
-          $markup .= "$indent  '#options':\n" . $options;
+          if ($select_type !== 'checkbox') {
+            $markup .= "$indent  '#options':\n" . $options;
+          }
           if (!empty($extra['multiple'])) {
             $markup .= "$indent  '#multiple': true\n";
           }
@@ -457,7 +459,7 @@ class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackA
 
       // Add common fields.
       if (!empty($element['value']) && (empty($valid_options) || in_array($element['value'], $valid_options))) {
-        $markup .= "$indent  '#default_value': \"" . $element['value'] . "\"\n";
+        $markup .= "$indent  '#default_value': " . $element['value'] . "\n";
       }
       if (!empty($extra['field_prefix'])) {
         $markup .= "$indent  '#field_prefix': " . $extra['field_prefix'] . "\n";
@@ -479,7 +481,7 @@ class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackA
       if (!empty($element['required'])) {
         $markup .= "$indent  '#required': true\n";
       }
-      
+
       // build contionals
       if($states = $this->buildConditionals($element, $elements)){
         foreach($states as $key => $values){
@@ -496,14 +498,14 @@ class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackA
 
       $output .= $markup;
     }
-    
+
     if ($multiPage) {
       // Replace the final page title.
       $output = str_replace('{' . $current_page . '_title}', $current_page_title, $output);
     }
     return array('elements' => $output, 'xref' => $xref);
   }
-  
+
   /**
    * Build conditionals and translate them to states api in D8.
    */
@@ -595,11 +597,11 @@ class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackA
           }
           break;
         }
-        
-        if (!$depedent_extra['aslist'] && $depedent_extra['multiple'] && count($depedent_extra['items']) > 1) {
+
+        if (!$depedent_extra['aslist'] && !empty($depedent_extra['multiple']) && $depedent_extra['multiple'] > 1) {
           $depedent['form_key'] = $depedent['form_key'] . "[$operator_value]";
         }
-        elseif (!$depedent_extra['aslist'] && !$depedent_extra['multiple']) {
+        elseif (!$depedent_extra['aslist'] && empty($depedent_extra['multiple'])) {
           $depedent['form_key'] = $depedent['form_key'] . "[$operator_value]";
         }
         $states[$element_state][] = [':input[name="' . $depedent['form_key'] . '"]' => $element_condition];
@@ -770,8 +772,10 @@ class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackA
    */
   public function postImport(MigrateImportEvent $event) {
     // Add the Webform field to the webform content type
-    // if it doesn't already exist.
-    $field_storage = FieldStorageConfig::loadByName('node', 'webform');
+    // if it doesn't already exist and desired.
+    if (!$field_storage = FieldStorageConfig::loadByName('node', 'webform')) {
+      return;
+    }
     $field = FieldConfig::loadByName('node', 'webform', 'webform');
     if (empty($field)) {
       $field = entity_create('field_config', array(
