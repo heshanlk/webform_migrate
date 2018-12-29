@@ -18,7 +18,10 @@ use Symfony\Component\Yaml\Yaml;
  * Drupal 7 webform source from database.
  *
  * @MigrateSource(
- *   id = "d7_webform"
+ *   id = "d7_webform",
+ *   core = {7},
+ *   source_module = "webform",
+ *   destination_module = "webform"
  * )
  */
 class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackAwareInterface {
@@ -255,7 +258,7 @@ class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackA
             break;
           }
         } while($child = next($children[$parent]));
-        
+
         if (!$has_children) {
           // We processed all components in this hierarchy-level
           reset($children[$parent]);
@@ -276,7 +279,7 @@ class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackA
       if($element['type'] == 'fieldset' && strpos($element['form_key'], 'fieldset') === FALSE){
         $element['form_key'] = 'fieldset_' . $element['form_key'];
       }
-      
+
       // If this is a multi-page form then indent all elements one level
       // to allow for page elements.
       if ($multiPage && $element['type'] != 'pagebreak') {
@@ -479,7 +482,7 @@ class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackA
       if (!empty($element['required'])) {
         $markup .= "$indent  '#required': true\n";
       }
-      
+
       // build contionals
       if($states = $this->buildConditionals($element, $elements)){
         foreach($states as $key => $values){
@@ -496,14 +499,14 @@ class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackA
 
       $output .= $markup;
     }
-    
+
     if ($multiPage) {
       // Replace the final page title.
       $output = str_replace('{' . $current_page . '_title}', $current_page_title, $output);
     }
     return array('elements' => $output, 'xref' => $xref);
   }
-  
+
   /**
    * Build conditionals and translate them to states api in D8.
    */
@@ -595,7 +598,7 @@ class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackA
           }
           break;
         }
-        
+
         if (!$depedent_extra['aslist'] && $depedent_extra['multiple'] && count($depedent_extra['items']) > 1) {
           $depedent['form_key'] = $depedent['form_key'] . "[$operator_value]";
         }
@@ -856,5 +859,4 @@ class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackA
       }
     }
   }
-
 }
