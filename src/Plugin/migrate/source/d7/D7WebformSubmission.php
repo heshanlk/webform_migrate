@@ -13,30 +13,30 @@ use Drupal\migrate_drupal\Plugin\migrate\source\DrupalSqlBase;
  * )
  */
 class D7WebformSubmission extends DrupalSqlBase {
-  
+
   /**
    * {@inheritdoc}
    */
   public function query() {
     $query = $this->select('webform_submissions', 'wfs');
 
-    $query->fields('wfs', array(
+    $query->fields('wfs', [
       'nid',
       'sid',
       'uid',
       'submitted',
       'remote_addr',
       'is_draft',
-    ));
+    ]);
 
     return $query;
   }
-  
-    /**
+
+  /**
    * {@inheritdoc}
    */
   public function fields() {
-    $fields = array(
+    $fields = [
       'nid' => $this->t('Webform node Id'),
       'sid' => $this->t('Webform submission Id'),
       'uid' => $this->t('User Id of submitter'),
@@ -45,11 +45,11 @@ class D7WebformSubmission extends DrupalSqlBase {
       'is_draft' => $this->t('Whether this submission is draft'),
       'webform_id' => $this->t('Id to be used for Webform'),
       'webform_data' => $this->t('Webform submitted data'),
-      'webform_uri' => $this->t('Submission uri'),  
-    );
+      'webform_uri' => $this->t('Submission uri'),
+    ];
     return $fields;
   }
-  
+
   /**
    * {@inheritdoc}
    */
@@ -62,7 +62,7 @@ class D7WebformSubmission extends DrupalSqlBase {
     $row->setSourceProperty('webform_uri', '/form/webform-' . $nid);
     return parent::prepareRow($row);
   }
-  
+
   /**
    * {@inheritdoc}
    */
@@ -71,25 +71,25 @@ class D7WebformSubmission extends DrupalSqlBase {
     $ids['sid']['alias'] = 'wfs';
     return $ids;
   }
-  
+
   /**
-   * Build submitted data from webform submitted data table
+   * Build submitted data from webform submitted data table.
    */
   private function buildSubmittedData($sid) {
     $query = $this->select('webform_submitted_data', 'wfsd');
     $query->innerJoin('webform_component', 'wc', 'wc.nid=wfsd.nid AND wc.cid=wfsd.cid');
-    
-    $query->fields('wfsd', array(
+
+    $query->fields('wfsd', [
       'no',
-      'data',  
-    ))
-    ->fields('wc', array(
-      'form_key',
-      'extra',
-    ));
+      'data',
+    ])
+      ->fields('wc', [
+        'form_key',
+        'extra',
+      ]);
     $wf_submissions = $query->condition('sid', $sid)->execute();
-    
-    $submitted_data = array();
+
+    $submitted_data = [];
     foreach ($wf_submissions as $wf_submission) {
       $extra = unserialize($wf_submission['extra']);
       if (!empty($extra['multiple'])) {
@@ -102,5 +102,5 @@ class D7WebformSubmission extends DrupalSqlBase {
     }
     return $submitted_data;
   }
-  
+
 }
