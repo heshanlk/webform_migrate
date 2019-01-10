@@ -17,7 +17,10 @@ use Drupal\node\Entity\Node;
  * Drupal 6 webform source from database.
  *
  * @MigrateSource(
- *   id = "d6_webform"
+ *   id = "d6_webform",
+ *   core = {6},
+ *   source_module = "webform",
+ *   destination_module = "webform"
  * )
  */
 class D6Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackAwareInterface {

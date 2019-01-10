@@ -9,7 +9,10 @@ use Drupal\migrate_drupal\Plugin\migrate\source\DrupalSqlBase;
  * Drupal 6 webform submission source from database.
  *
  * @MigrateSource(
- *   id = "d6_webform_submission"
+ *   id = "d6_webform_submission",
+ *   core = {6},
+ *   source_module = "webform",
+ *   destination_module = "webform"
  * )
  */
 class D6WebformSubmission extends DrupalSqlBase {

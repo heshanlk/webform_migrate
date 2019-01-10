@@ -9,7 +9,10 @@ use Drupal\migrate_drupal\Plugin\migrate\source\DrupalSqlBase;
  * Drupal 7 webform submission source from database.
  *
  * @MigrateSource(
- *   id = "d7_webform_submission"
+ *   id = "d7_webform_submission",
+ *   core = {7},
+ *   source_module = "webform",
+ *   destination_module = "webform"
  * )
  */
 class D7WebformSubmission extends DrupalSqlBase {
@@ -92,13 +95,15 @@ class D7WebformSubmission extends DrupalSqlBase {
     $submitted_data = [];
     foreach ($wf_submissions as $wf_submission) {
       $extra = unserialize($wf_submission['extra']);
-      if (!empty($extra['multiple'])) {
+      if (!empty($extra['multiple']) && !empty($wf_submission['data'])) {
         $item[$wf_submission['no']] = $wf_submission['data'];
       }
       else {
         $item = $wf_submission['data'];
       }
-      $submitted_data[$wf_submission['form_key']] = $item;
+      if (!empty($item)) {
+        $submitted_data[$wf_submission['form_key']] = $item;
+      }
     }
     return $submitted_data;
   }
