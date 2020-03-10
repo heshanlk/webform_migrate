@@ -270,8 +270,8 @@ class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackA
     if ($multiPage) {
       $pageCnt = 1;
       $current_page = 'wizard_page_1';
-      $output .= "first_page:\n  '#type': wizard_page\n  '#title': {" . $current_page . "_title}\n  '#open': true\n";
-      $current_page_title = t('Page') . ' ' . $pageCnt++;
+      $output .= "first_page:\n  '#type': webform_wizard_page\n  '#title': {" . $current_page . "_title}\n";
+      $current_page_title = 'Start';
     }
 
     foreach ($elements_tree as $element) {
@@ -322,7 +322,7 @@ class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackA
         $element['value'] = $this->replaceTokens($element['value']);
       }
 
-      $markup = $indent . $element['form_key'] . ":\n";
+      $markup = $indent . strtolower($element['form_key']) . ":\n";
       switch ($element['type']) {
         case 'fieldset':
           if ($multiPage && empty($current_page_title)) {
@@ -346,10 +346,10 @@ class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackA
           if (!empty($extra['aslist'])) {
             $select_type = 'select';
           }
-          elseif (!empty($extra['multiple']) && count($extra['items']) > 1) {
+          elseif (!empty($extra['multiple']) && is_array($extra['items']) && count($extra['items']) > 1) {
             $select_type = 'checkboxes';
           }
-          elseif (!empty($extra['multiple']) && count($extra['items']) == 1) {
+          elseif (!empty($extra['multiple']) && is_array($extra['items']) && count($extra['items']) == 1) {
             $select_type = 'checkbox';
             list($key, $desc) = explode('|', $extra['items']);
             $markup .= "$indent  '#description': \"" . $this->cleanString($desc) . "\"\n";
@@ -403,6 +403,7 @@ class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackA
           break;
 
         case 'file':
+        case 'multiple_file':
           $exts = '';
           if (!empty($extra['filtering']['types'])) {
             $types = $extra['filtering']['types'];
@@ -421,6 +422,10 @@ class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackA
           $markup .= "$indent  '#file_extensions': '$exts'\n";
           if (!empty($extra['width'])) {
             $markup .= "$indent  '#size': " . $extra['width'] . "\n";
+          }
+
+          if ($element['type'] == 'multiple_file') {
+            $markup .= "$indent  '#multiple': true\n";
           }
           break;
 
@@ -453,9 +458,34 @@ class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackA
         case 'pagebreak':
           $output = str_replace('{' . $current_page . '_title}', $current_page_title, $output);
           $current_page = $element['form_key'];
-          $markup .= "$indent  '#type': wizard_page\n  '#open': true\n  '#title': {" . $current_page . "_title}\n";
-          $current_page_title = t('Page') . ' ' . $pageCnt++;
+          $markup .= "$indent  '#type': webform_wizard_page\n  '#title': {" . $current_page . "_title}\n";
+          $current_page_title = $element['name'];
+          $pageCnt++;
           break;
+
+        case 'addressfield':
+          $markup .= "$indent  '#type': webform_address\n";
+          $markup .= "$indent  '#state_province__type': textfield\n";
+
+          break;
+
+        case 'grid':
+          $questionsArray = $this->getItemsArray($extra['questions']);
+          $questions = $this->buildItemsString($questionsArray, $indent . '  ');
+
+          $answersArray = $this->getItemsArray($extra['options']);
+          $answers = $this->buildItemsString($answersArray, $indent . '  ');
+
+
+          $markup .= "$indent  '#type': webform_likert\n";
+          $markup .= "$indent  '#questions':\n" . $questions . "\n";
+          $markup .= "$indent  '#answers':\n" . $answers . "\n";
+
+          break;
+
+
+        default:
+          echo '';
       }
 
       // Add common fields.
@@ -561,22 +591,27 @@ class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackA
         $operator_value = $condition['value'];
         $depedent = $elements[$condition['source']];
         $depedent_extra = unserialize($depedent['extra']);
+        $depedent_extra['items'] = explode("\n", $depedent_extra['items']);
+
+
         switch ($condition['operator']) {
           case 'equal':
             $element_condition = ['value' => $operator_value];
-            if ($depedent['type'] == 'select' && !$depedent_extra['aslist']) {
+            if ($depedent['type'] == 'select' && !$depedent_extra['aslist'] && $depedent_extra['multiple']) {
               $element_condition = ['checked' => TRUE];
             }
+
             break;
 
           case 'not_equal':
             // There is no handler for this in D8 so we do the reverse.
             $element_state = $condition['invert'] ? 'visible' : 'invisible';
             $element_condition = ['value' => $operator_value];
-            // Specially handle the checkboxes, radios.
-            if ($depedent['type'] == 'select' && !$depedent_extra['aslist']) {
+            // Specially handle the checkboxes.
+            if ($depedent['type'] == 'select' && !$depedent_extra['aslist']  && $depedent_extra['multiple']) {
               $element_condition = ['checked' => TRUE];
             }
+
             break;
 
           case 'less_than':
@@ -605,13 +640,14 @@ class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackA
             break;
         }
 
-        if (!$depedent_extra['aslist'] && $depedent_extra['multiple'] && count($depedent_extra['items']) > 1) {
+        if (!$depedent_extra['aslist'] && $depedent_extra['multiple'] && is_array($depedent_extra['items']) && count($depedent_extra['items']) > 1) {
           $depedent['form_key'] = $depedent['form_key'] . "[$operator_value]";
         }
-        elseif (!$depedent_extra['aslist'] && !$depedent_extra['multiple']) {
+        elseif (!$depedent_extra['aslist'] && !$depedent_extra['multiple'] && is_array($depedent_extra['items']) && count($depedent_extra['items']) == 1) {
           $depedent['form_key'] = $depedent['form_key'] . "[$operator_value]";
         }
-        $states[$element_state][] = [':input[name="' . $depedent['form_key'] . '"]' => $element_condition];
+
+        $states[$element_state][] = [':input[name="' . $depedent['form_key']  . '"]' => $element_condition];
       }
       if (empty($states)) {
         return FALSE;
@@ -822,8 +858,8 @@ class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackA
     // Attach any Webform created to the relevant webforms if
     // Webform exists and Webform exists and Webform field is empty.
     $webforms = $this->query()->execute();
-    foreach ($webforms as $webform) {
-      $webform_nid = $webform['nid'];
+    foreach ($webforms as $webformInfo) {
+      $webform_nid = $webformInfo['nid'];
       $webform_id = 'webform_' . $webform_nid;
       $webform = Webform::load($webform_id);
       if (!empty($webform)) {
@@ -831,7 +867,7 @@ class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackA
         if (!empty($node) && $node->getType() == 'webform') {
           if (empty($node->webform->target_id)) {
             $node->webform->target_id = $webform_id;
-            $node->webform->status = 1;
+            $node->webform->status = $webformInfo['status'] ? 'open' : 'closed';
             $node->save();
           }
         }
@@ -864,6 +900,26 @@ class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackA
         }
       }
     }
+  }
+
+  protected function getItemsArray($rawString) {
+    $items = explode("\n", $rawString);
+    $items = array_map('trim', $items);
+    return array_map(function($item) {
+      return explode('|', $item);
+    }, $items);
+  }
+
+  protected function buildItemsString($itemsArray, $baseIndent = '') {
+    $preparedItems = array_map(function($item) use ($baseIndent) {
+      return $baseIndent . '  ' . $this->encapsulateString($item[0]) . ': ' . $this->encapsulateString($item[1]);
+    }, $itemsArray);
+
+    return implode("\n", $preparedItems);
+  }
+
+  protected function encapsulateString($string) {
+    return sprintf("'%s'", addslashes($string));
   }
 
 }
