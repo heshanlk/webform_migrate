@@ -687,6 +687,14 @@ class D7Webform extends DrupalSqlBase implements ImportAwareInterface, RollbackA
           $email[$field] = "[webform-submission:values:{$xref[$email[$field]]}:raw]";
         }
       }
+      foreach (['email', 'subject', 'template', 'from_name', 'from_address'] as $field) {
+        if ($email[$field] == 'default') {
+          $email[$field] = '_default';
+        }
+        else {
+          $email[$field] = str_replace('[submission:', '[webform_submission:', $email[$field]);
+        }
+      }
       $excluded = [];
       if (!empty($email['excluded_components'])) {
         $excludes = explode(',', $email['excluded_components']);
